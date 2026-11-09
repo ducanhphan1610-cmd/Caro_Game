@@ -20,6 +20,7 @@ typedef struct{
     CellState currentTurn;
     int winner;
     bool isWinning;
+    char gamename[10];
 } Game;
 
 extern Game g_game;
