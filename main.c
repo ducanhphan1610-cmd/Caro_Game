@@ -1,151 +1,146 @@
-#include"caro.h"
+#define _CRT_SECURE_NO_WARNINGS
+#include <windows.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include "caro.h"
 #include "event.h"
 #include "board.h"
 #include "rules.h"
-#include<string.h>
-#include<stdio.h>
-#include<stdlib.h>
-#include <time.h>
+#include "ui.h"
 
 Game g_game;
 
-int SaveGame (const char *filename){
+int SaveGame(const char *filename) {
     FILE *f = fopen(filename, "w");
-    if( f == NULL) return 0;
-    fprintf(f,"%s\n",g_game.gamename);
-    fprintf(f,"%d\n",g_game.currentTurn, g_game.isVsAI ? 1 : 0);
-    for(int i = 0; i < BOARD_SIZE; i++){
-        for(int j = 0; j < BOARD_SIZE; j++){
-            fprintf(f,"%d ", g_game.board[i][j]);
+    if (f == NULL) return 0;
+    fprintf(f, "%s\n", g_game.gamename);
+    fprintf(f, "%d %d %d %.2f\n", g_game.currentTurn, g_game.isVsAI ? 1 : 0, move_count, g_game.remainTime);
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        for (int j = 0; j < BOARD_SIZE; j++) {
+            fprintf(f, "%d ", g_game.board[i][j]);
         }
-        fprintf(f,"\n");
+        fprintf(f, "\n");
+    }
+    for (int k = 0; k < move_count; k++) {
+        fprintf(f, "%d %d\n", hist_r[k], hist_c[k]);
     }
     fclose(f);
     return 1;
 }
 
-int LoadGame (const char *filename){
-    FILE *f = fopen(filename,"r");
-    if ( f == NULL){
-        printf_s("Tệp không tồn tại!\n");
-        return 0;
-    }
-    if(fscanf(f , " %[^\n]",g_game.gamename) != 1){
+int LoadGame(const char *filename) {
+    FILE *f = fopen(filename, "r");
+    if (f == NULL) return 0;
+
+    char loadedName[20];
+    if (fscanf(f, " %19[^\n]", loadedName) != 1) {
         fclose(f);
         return 0;
     }
-    int turn = 1, vsAI = 0;
-    if (fscanf(f, "%d %d", &turn, &vsAI) != 2){
+    int turn = 1, vsAI = 0, loadedMoves = 0;
+    float remTime = (float)g_game.settings.TurnTimeOut;
+    if (fscanf(f, "%d %d %d %f", &turn, &vsAI, &loadedMoves, &remTime) != 4) {
         fclose(f);
         return 0;
     }
-    g_game.currentTurn = (CellState) turn;
-    g_game.isVsAI = (vsAI == 1);
-    for(int i = 0; i < BOARD_SIZE; i++){
-        for(int j = 0 ; j < BOARD_SIZE; j++){
+
+    CellState tempBoard[BOARD_SIZE][BOARD_SIZE];
+    for (int i = 0; i < BOARD_SIZE; i++) {
+        for (int j = 0; j < BOARD_SIZE; j++) {
             int cell = 0;
-            if(fscanf(f, " %d", &cell) != 1){
-               fclose(f);
-               return 0;
+            if (fscanf(f, " %d", &cell) != 1 || cell < 0 || cell > 2) {
+                fclose(f);
+                return 0;
             }
-            g_game.board[i][j] = (CellState)cell;
+            tempBoard[i][j] = (CellState)cell;
         }
+    }
+
+    board_reset();
+    strcpy(g_game.gamename, loadedName);
+    g_game.currentTurn = (CellState)turn;
+    g_game.isVsAI = (vsAI == 1);
+    g_game.aiSide = _Y;
+    g_game.remainTime = remTime;
+    g_game.winner = EMPTY;
+    g_game.isWinning = false;
+    g_game.CursorX = BOARD_SIZE / 2;
+    g_game.CursorY = BOARD_SIZE / 2;
+
+    for (int i = 0; i < BOARD_SIZE; i++)
+        for (int j = 0; j < BOARD_SIZE; j++)
+            g_game.board[i][j] = tempBoard[i][j];
+
+    move_count = loadedMoves;
+    for (int k = 0; k < move_count; k++) {
+        fscanf(f, "%d %d", &hist_r[k], &hist_c[k]);
     }
     fclose(f);
-    return 1;   
+    return 1;
 }
-void renderConsole(void) {
-    system("cls");
-    switch (g_game.state) {
-        case STATE_MENU: {
-            const char *items[] = {"Play", "About", "Settings", "Tutorial"};
-            printf("=== %s - MAIN MENU ===\n\n", g_game.gamename);
-            for (int i = 0; i < 4; i++) {
-                printf("%s %s\n", (i == g_game.menuIndex) ? "-->" : "   ", items[i]);
-            }
-            printf("\n[W/S hoặc Mui ten: Di chuyen | Enter: Chon]");
-            break;
-        }
-        case STATE_PLAY_MODE: {
-            const char *modes[] = {"PVP (2 Nguoi choi)", "PVE (Dau voi AI)"};
-            printf("=== CHON CHE DO CHOI ===\n\n");
-            for (int i = 0; i < 2; i++) {
-                printf("%s %s\n", (i == g_game.menuIndex) ? "-->" : "   ", modes[i]);
-            }
-            printf("\n[Enter: Bat dau | ESC: Quay lai]");
-            break;
-        }
-        case STATE_SETTINGS: {
-            const char *colors[] = {"Do", "Xanh Duong", "Xanh La", "Vang"};
-            printf("=== SETTINGS (Dung A/D hoac Trai/Phai de doi gia tri) ===\n\n");
-            printf("%s Sound:       <%s>\n", g_game.menuIndex == 0 ? "-->" : "   ", g_game.settings.SoundEnabled ? "ON" : "OFF");
-            printf("%s Phim P1 (X): <%s>\n", g_game.menuIndex == 1 ? "-->" : "   ", g_game.settings.P1_control == KEYSET_WASD ? "WASD" : "ARROWS");
-            printf("%s Phim P2 (Y): <%s>\n", g_game.menuIndex == 2 ? "-->" : "   ", g_game.settings.P2_control == KEYSET_WASD ? "WASD" : "ARROWS");
-            printf("%s Thoi gian:   <%d giay>\n", g_game.menuIndex == 3 ? "-->" : "   ", g_game.settings.TurnTimeOut);
-            printf("%s Mau P1 (X):  <%s>\n", g_game.menuIndex == 4 ? "-->" : "   ", colors[g_game.settings.color_P1]);
-            printf("%s Mau P2 (Y):  <%s>\n", g_game.menuIndex == 5 ? "-->" : "   ", colors[g_game.settings.color_P2]);
-            printf("\n[ESC: Luu & Quay lai]");
-            break;
-        }
-        case STATE_ABOUT:
-            printf("=== ABOUT ===\nDo an Game Caro - Nhom Phat Trien\n\n[Bam Enter/ESC de quay lai]");
-            break;
-        case STATE_TUTORIAL:
-            printf("=== TUTORIAL ===\n- Xep du 5 quan lien tiep de thang (Co luat chan 2 dau).\n- Phim Z: Undo | ESC: Tam dung.\n\n[Bam Enter/ESC de quay lai]");
-            break;
-        case STATE_PLAYING: {
-            printf("Luot: %c | Thoi gian con lai: %.1fs | [Z: Undo | ESC: Pause]\n\n",
-                   (g_game.currentTurn == _X) ? 'X' : 'Y', g_game.remainTime);
-            for (int i = 0; i < BOARD_SIZE; i++) {
-                for (int j = 0; j < BOARD_SIZE; j++) {
-                    char ch = '.';
-                    if (g_game.board[i][j] == _X) ch = 'X';
-                    else if (g_game.board[i][j] == _Y) ch = 'Y';
 
-                    if (i == g_game.CursorY && j == g_game.CursorX) printf("[%c]", ch);
-                    else printf(" %c ", ch);
-                }
-                printf("\n");
-            }
-            break;
-        }
-        case STATE_PAUSE: {
-            const char *pItems[] = {"Tiep tuc", "Choi lai", "Ve Menu chinh"};
-            printf("=== TAM DUNG ===\n\n");
-            for (int i = 0; i < 3; i++) {
-                printf("%s %s\n", (i == g_game.menuIndex) ? "-->" : "   ", pItems[i]);
-            }
-            break;
-        }
-        case STATE_GAMEOVER: {
-            const char *gItems[] = {"Choi van moi", "Ve Menu chinh"};
-            printf("=== KET THUC VAN DAU ===\n");
-            if (g_game.winner == _X) printf("NGUOI CHOI X THANG!\n\n");
-            else if (g_game.winner == _Y) printf("NGUOI CHOI Y (AI) THANG!\n\n");
-            else printf("HOA CO!\n\n");
+static bool InputFileNameUI(const char* prompt, char* buf, int size, int row) {
+    ClearLine(row); ClearLine(row + 1);
+    GotoXY(3, row);
+    SetColor(14); printf("%s", prompt);
+    SetColor(15);
+    SetCursorVisible(true);
+    bool ok = (fgets(buf, size, stdin) != NULL);
+    SetCursorVisible(false);
+    SetColor(7);
+    if (!ok) return false;
+    buf[strcspn(buf, "\r\n")] = 0;
+    return buf[0] != '\0';
+}
 
-            for (int i = 0; i < 2; i++) {
-                printf("%s %s\n", (i == g_game.menuIndex) ? "-->" : "   ", gItems[i]);
-            }
-            break;
-        }
-        default: break;
+bool PromptSaveGame(int msgRow) {
+    char filename[100];
+    if (!InputFileNameUI("Nhap ten tap tin de luu (Enter de huy): ", filename, sizeof(filename), msgRow)) {
+        ClearLine(msgRow);
+        return false;
     }
+    if (SaveGame(filename)) {
+        ShowMsg(msgRow + 1, 10, "Da luu game thanh cong!");
+        return true;
+    }
+    ShowMsg(msgRow + 1, 12, "Khong tao duoc tap tin!");
+    return false;
 }
-int main(){
+
+bool PromptLoadGame(int msgRow) {
+    char filename[100];
+    if (!InputFileNameUI("Nhap ten tap tin can tai (Enter de huy): ", filename, sizeof(filename), msgRow)) {
+        ClearLine(msgRow);
+        return false;
+    }
+    if (LoadGame(filename)) {
+        ShowMsg(msgRow + 1, 10, "Da tai game thanh cong!");
+        return true;
+    }
+    ShowMsg(msgRow + 1, 12, "Tap tin khong ton tai hoac bi loi!");
+    return false;
+}
+
+int main(void) {
     srand((unsigned int)time(NULL));
+    InitConsoleUI();
+
     strcpy(g_game.gamename, "CARO 15x15");
     g_game.settings.SoundEnabled = true;
     g_game.settings.TurnTimeOut = 30;
     g_game.settings.P1_control = KEYSET_WASD;
     g_game.settings.P2_control = KEYSET_ARROWS;
+    g_game.settings.color_P1 = 0; // 0: Do, 1: Xanh Duong, 2: Xanh La, 3: Vang
+    g_game.settings.color_P2 = 1;
     g_game.state = STATE_MENU;
-    
+
     clock_t lastTime = clock();
     float renderTimer = 0.0f;
 
-    renderConsole();
-    
+    RenderStateScreen();
+
     while (g_game.state != STATE_QUIT) {
         clock_t now = clock();
         float dt = (float)(now - lastTime) / CLOCKS_PER_SEC;
@@ -154,17 +149,36 @@ int main(){
         GameState prevState = g_game.state;
         int prevMenu = g_game.menuIndex;
         int prevX = g_game.CursorX, prevY = g_game.CursorY;
-        int prevMoves = move_count;
+        Settings prevSettings = g_game.settings;
 
         dispatchGameFlow(dt);
 
-        renderTimer += dt;
-        bool stateChanged = (prevState != g_game.state) || (prevMenu != g_game.menuIndex) || (prevX != g_game.CursorX) || (prevY != g_game.CursorY) || (prevMoves != move_count);
-
-        if (stateChanged || (g_game.state == STATE_PLAYING && renderTimer >= 0.5f)) {
-            renderConsole();
-            renderTimer = 0.0f;
+        if (prevState != g_game.state) {
+            if (g_game.state == STATE_PLAYING) DrawGameScreen();
+            else RenderStateScreen();
         }
+        else if (g_game.state == STATE_PLAYING) {
+            if (prevX != g_game.CursorX || prevY != g_game.CursorY) {
+                DrawCell(prevY, prevX, false);
+                DrawCell(g_game.CursorY, g_game.CursorX, true);
+            }
+            renderTimer += dt;
+            if (renderTimer >= 0.25f) {
+                UpdateTimerDisplay();
+                renderTimer = 0.0f;
+            }
+        }
+        else {
+            bool settingChanged = memcmp(&prevSettings, &g_game.settings, sizeof(Settings)) != 0;
+            if (prevMenu != g_game.menuIndex || settingChanged) {
+                RenderStateScreen();
+            }
+        }
+
+        Sleep(15);
     }
+
+    system("cls");
+    SetCursorVisible(true);
     return 0;
 }

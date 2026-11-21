@@ -1,27 +1,27 @@
 #include <stdlib.h>
+#include <stdbool.h>
 #include "ai.h"
 #include "board.h"
 
-#define BORDER         2              
-#define FIVE_SCORE     1000000000LL   
-#define WIN_THRESHOLD   100000000LL   
-#define INF          100000000000LL   
+#define BORDER        2
+#define FIVE_SCORE    1000000000LL
+#define WIN_THRESHOLD  100000000LL
+#define INF           100000000000LL
 
-
-/* PATTERN_SCORE[chuỗi dài bao nhiêu][check đuôi với đít][đang lượt nào ] */
 static const long long PATTERN_SCORE[5][3][2] = {
-    [1] = { [1] = { 1, 1 },[2] = { 5, 10 } },
-    [2] = { [1] = { 10, 50 },[2] = { 100, 1000 } },
-    [3] = { [1] = { 500, 5000 },[2] = { 10000, 500000 } },
-    [4] = { [1] = { 100000, 5000000 },[2] = { 1000000, 5000000 } },
+    [1] = { [1] = { 2, 4 },         [2] = { 10, 20 } },
+    [2] = { [1] = { 20, 80 },       [2] = { 200, 1500 } },
+    [3] = { [1] = { 800, 6000 },    [2] = { 15000, 600000 } },
+    [4] = { [1] = { 150000, 8000000 }, [2] = { 2000000, 10000000 } },
 };
-static inline int to_sign(CellState p) { //ham chuyen doi 
+
+static inline int to_sign(CellState p) {
     if (p == _X) return 1;
     if (p == _Y) return -1;
     return 0;
 }
-static long long consecutive_score(int len, int open_ends, bool is_my_turn)
-{
+
+static long long consecutive_score(int len, int open_ends, bool is_my_turn) {
     if (len >= WIN_LEN)
         return (block_rule && open_ends == 0) ? 0 : FIVE_SCORE;
     if (open_ends == 0)
@@ -29,168 +29,205 @@ static long long consecutive_score(int len, int open_ends, bool is_my_turn)
     return PATTERN_SCORE[len][open_ends][is_my_turn ? 1 : 0];
 }
 
-/* getscore là để m tính xem chuỗi đó chặn 0,1,2 đầu còn scan là tạo chuỗi 1d để m check mấy đuôi phụ phần getscore*/
-static long long get_score(const int a[], int player)
-{
-    const int size = BOARD_SIZE + 2;
+static long long get_score(const int a[], int length, int turn_sign) {
     long long score = 0;
-
-    for (int i = 1; i < size - 1; i++) {
+    for (int i = 1; i < length - 1; i++) {
         if (abs(a[i]) != 1) continue;
-
         int j = i;
-        while (j + 1 < size - 1 && a[j + 1] == a[i]) j++;
+        while (j + 1 < length - 1 && a[j + 1] == a[i]) j++;
 
         int len = j - i + 1;
         int open_ends = 2 - (a[i - 1] != 0) - (a[j + 1] != 0);
-        score += consecutive_score(len, open_ends, player == a[i]) * a[i];
+        score += consecutive_score(len, open_ends, turn_sign == a[i]) * a[i];
         i = j;
     }
     return score;
 }
 
-static long long scan_line(int r0, int c0, int dr, int dc, int player)
-{
+static long long scan_line(int r0, int c0, int dr, int dc, int steps, int turn_sign) {
     int b[BOARD_SIZE + 2];
-    for (int k = 0; k < BOARD_SIZE + 2; k++) {
-        int r = r0 + k * dr, c = c0 + k * dc;
-        b[k] = valid(r, c) ? to_sign(g_game.board[r][c]) : BORDER;
+    b[0] = BORDER;
+    for (int k = 0; k < steps; k++) {
+        b[k + 1] = to_sign(g_game.board[r0 + k * dr][c0 + k * dc]);
     }
-    return get_score(b, player);
+    b[steps + 1] = BORDER;
+    return get_score(b, steps + 2, turn_sign);
 }
 
-
-
-#define SCAN(r0, c0, dr, dc)                                          \
-    do {                                                              \
-        score += scan_line((r0), (c0), (dr), (dc), player);           \
-        if (llabs(score) >= WIN_THRESHOLD) return score;              \
+#define SCAN(r0, c0, dr, dc, steps)                                          \
+    do {                                                                     \
+        score += scan_line((r0), (c0), (dr), (dc), (steps), turn_sign);      \
+        if (llabs(score) >= WIN_THRESHOLD) return score;                     \
     } while (0)
 
-/* này là để đánh giá xong đưa ra điểm cụ thể ví dụ như là tổng của thằng X á mà > 0 thì nó có lợi, < 0 thì bất lợi, tương tự với thằng O */
-static long long evaluation(CellState player)
-{   
-    int player_sign = to_sign(player);
+static long long evaluation(CellState turn) {
+    int turn_sign = to_sign(turn);
     long long score = 0;
-    for (int i = 0; i <= BOARD_SIZE; i++)     SCAN(i, -1, 0, 1);                 /* hàng ngang */
-    for (int j = 0; j <= BOARD_SIZE; j++)     SCAN(-1, j, 1, 0);                 /* cột dọc    */
-    for (int i = -1; i <= BOARD_SIZE; i++)     SCAN(i, -1, 1, 1);                 /* chéo chính */
-    for (int j = 0; j <= BOARD_SIZE; j++)     SCAN(-1, j, 1, 1);
-    for (int i = 0; i <= BOARD_SIZE + 1; i++) SCAN(i, -1, -1, 1);                /* chéo phụ   */
-    for (int j = 0; j <= BOARD_SIZE; j++)     SCAN(BOARD_SIZE, j, -1, 1);
+
+    for (int r = 0; r < BOARD_SIZE; r++) SCAN(r, 0, 0, 1, BOARD_SIZE);
+    for (int c = 0; c < BOARD_SIZE; c++) SCAN(0, c, 1, 0, BOARD_SIZE);
+
+    for (int r = 0; r <= BOARD_SIZE - WIN_LEN; r++) SCAN(r, 0, 1, 1, BOARD_SIZE - r);
+    for (int c = 1; c <= BOARD_SIZE - WIN_LEN; c++) SCAN(0, c, 1, 1, BOARD_SIZE - c);
+
+    for (int r = WIN_LEN - 1; r < BOARD_SIZE; r++) SCAN(r, 0, -1, 1, r + 1);
+    for (int c = 1; c <= BOARD_SIZE - WIN_LEN; c++) SCAN(BOARD_SIZE - 1, c, -1, 1, BOARD_SIZE - c);
+
     return score;
 }
 
+typedef struct {
+    int r, c;
+    long long priority;
+} MoveCand;
 
+static long long quick_heuristic(int r, int c) {
+    static const int dirs[4][2] = {{0, 1}, {1, 0}, {1, 1}, {1, -1}};
+    long long h = 0;
 
-static int cand_r[BOARD_SIZE * BOARD_SIZE];
-static int cand_c[BOARD_SIZE * BOARD_SIZE];
-static int cand_count;
-static int max_depth;
+    for (int d = 0; d < 4; d++) {
+        int dr = dirs[d][0], dc = dirs[d][1];
+        for (int side = 1; side <= 2; side++) {
+            CellState target = (side == 1) ? _X : _Y;
+            int cnt = 0, open = 0;
 
-/* Lọc ô nằm ngay gần đó . lọc 8 hướng thôi ( lọc nhiều quá chịu k nổi =)) ) */
-static void gen_candidates(void)
-{
-    cand_count = 0;
+            int i = 1;
+            while (i < WIN_LEN && valid(r + dr * i, c + dc * i) && g_game.board[r + dr * i][c + dc * i] == target) {
+                cnt++; i++;
+            }
+            if (valid(r + dr * i, c + dc * i) && g_game.board[r + dr * i][c + dc * i] == EMPTY) open++;
+
+            int j = 1;
+            while (j < WIN_LEN && valid(r - dr * j, c - dc * j) && g_game.board[r - dr * j][c - dc * j] == target) {
+                cnt++; j++;
+            }
+            if (valid(r - dr * j, c - dc * j) && g_game.board[r - dr * j][c - dc * j] == EMPTY) open++;
+
+            if (cnt >= WIN_LEN - 1) h += 1000000;
+            else if (cnt > 0) h += (long long)cnt * cnt * (open + 1) * 50;
+        }
+    }
+    int center = BOARD_SIZE / 2;
+    h += (BOARD_SIZE - (abs(r - center) + abs(c - center)));
+    return h;
+}
+
+static int cmp_cand(const void *a, const void *b) {
+    long long pa = ((const MoveCand *)a)->priority;
+    long long pb = ((const MoveCand *)b)->priority;
+    return (pb > pa) - (pb < pa);
+}
+
+static int gen_candidates(MoveCand out[]) {
+    int count = 0;
     for (int r = 0; r < BOARD_SIZE; r++) {
         for (int c = 0; c < BOARD_SIZE; c++) {
             if (g_game.board[r][c] != EMPTY) continue;
 
             bool near_stone = false;
-            for (int dr = -1; dr <= 1 && !near_stone; dr++)
-                for (int dc = -1; dc <= 1; dc++)
+            for (int dr = -2; dr <= 2 && !near_stone; dr++) {
+                for (int dc = -2; dc <= 2; dc++) {
+                    if ((dr == 0 && dc == 0) || (abs(dr) == 2 && abs(dc) == 2)) continue;
                     if (valid(r + dr, c + dc) && g_game.board[r + dr][c + dc] != EMPTY) {
                         near_stone = true;
                         break;
                     }
-
+                }
+            }
             if (near_stone) {
-                cand_r[cand_count] = r;
-                cand_c[cand_count] = c;
-                cand_count++;
+                out[count].r = r;
+                out[count].c = c;
+                out[count].priority = quick_heuristic(r, c);
+                count++;
             }
         }
     }
+    if (count > 1) qsort(out, count, sizeof(MoveCand), cmp_cand);
+    return count;
 }
 
-/* này là để quyết định nước đi sao cho có lợi nhất. */
-static long long minimax(int depth, long long alpha, long long beta,
-    CellState player, int* x, int* y)
-{
-    long long val = evaluation(player);
-    if (depth == 0 || llabs(val) >= WIN_THRESHOLD)
-        return val;
+static int max_depth, best_move_r, best_move_c;
 
+static long long minimax(int depth, long long alpha, long long beta, CellState player) {
+    long long val = evaluation(player);
+    if (depth == 0 || llabs(val) >= WIN_THRESHOLD) return val;
+
+    MoveCand cands[BOARD_SIZE * BOARD_SIZE];
+    int cand_count = gen_candidates(cands);
+    if (cand_count == 0) return val;
+
+    int limit = (cand_count > 18) ? 18 : cand_count;
     bool maximizing = (player == _X);
     long long best = maximizing ? -INF : INF;
     CellState next_player = (player == _X) ? _Y : _X;
 
-    for (int k = 0; k < cand_count; k++) {
-        int i = cand_r[k], j = cand_c[k];
-        if (g_game.board[i][j] != EMPTY) continue;
+    for (int k = 0; k < limit; k++) {
+        int r = cands[k].r, c = cands[k].c;
+        g_game.board[r][c] = player;
+        long long eval = minimax(depth - 1, alpha, beta, next_player);
+        g_game.board[r][c] = EMPTY;
 
-        g_game.board[i][j] = player;
-        long long eval = minimax(depth - 1, alpha, beta, next_player, x, y);
-        g_game.board[i][j] = EMPTY;
-
-        if (maximizing ? eval > best : eval < best) {
+        if (maximizing ? (eval > best) : (eval < best)) {
             best = eval;
-            if (depth == max_depth) { *x = i; *y = j; }
+            if (depth == max_depth) { best_move_r = r; best_move_c = c; }
         }
         if (maximizing) { if (eval > alpha) alpha = eval; }
-        else { if (eval < beta)  beta = eval; }
-        if (beta <= alpha) break;                      
+        else            { if (eval < beta)  beta = eval; }
+        if (beta <= alpha) break;
     }
     return best;
 }
 
+static const int DR[8] = { -1, 1, 0, 0, -1, 1, 1, -1 };
+static const int DC[8] = { 0, 0, -1, 1, 1, -1, 1, -1 };
 
-
-static const int DX[8] = { -1, 1, 0, 0, -1, 1, 1, -1 };
-static const int DY[8] = { 0, 0, -1, 1, 1, -1, 1, -1 };
-
-
-static bool random_adjacent(int* x, int* y)
-{
+static bool random_adjacent(int r, int c, int *out_r, int *out_c) {
     int start = rand() % 8;
     for (int t = 0; t < 8; t++) {
         int d = (start + t) % 8;
-        int nx = *x + DX[d], ny = *y + DY[d];
-        if (valid(nx, ny) && g_game.board[nx][ny] == EMPTY) {
-            *x = nx;
-            *y = ny;
+        int nr = r + DR[d], nc = c + DC[d];
+        if (valid(nr, nc) && g_game.board[nr][nc] == EMPTY) {
+            *out_r = nr; *out_c = nc;
             return true;
         }
     }
     return false;
 }
-/* Nước đầu tiên là đánh vô giữa bàn cờ, Nước thứ hai là đánh random vào 8 ô xung quanh bất kì , Nước thứ 3 là dùng hàm gen_candidates để lọc danh sách thỏa điều kiện */
-  
-    
-void bot_move(CellState bot, int* x, int* y)
-{
-    if (move_count == 0) {                       
-        *x = *y = BOARD_SIZE  / 2;
+
+void bot_move(CellState bot, int* x, int* y) {
+    if (move_count == 0) {
+        *x = *y = BOARD_SIZE / 2;
         return;
     }
 
-    *x = hist_r[move_count - 1];                 
-    *y = hist_c[move_count - 1];
+    int last_r = hist_r[move_count - 1];
+    int last_c = hist_c[move_count - 1];
+    best_move_r = -1;
+    best_move_c = -1;
 
-    if (move_count == 1) {                      
-        random_adjacent(x, y);
-    }
-    else {
-        gen_candidates();
-        max_depth = (cand_count <= 110) ? 3 : 2; 
-        minimax(max_depth, -INF, INF, bot, x, y);
-    }
-
-    if (!valid(*x, *y) || g_game.board[*x][*y] != EMPTY) {     
-        if (!random_adjacent(x, y)) {
-            for (int r = 0; r < BOARD_SIZE; r++)
-                for (int c = 0; c < BOARD_SIZE; c++)
-                    if (g_game.board[r][c] == EMPTY) { *x = r; *y = c; return; }
+    if (move_count == 1) {
+        random_adjacent(last_r, last_c, &best_move_r, &best_move_c);
+    } else {
+        MoveCand cands[BOARD_SIZE * BOARD_SIZE];
+        int cnt = gen_candidates(cands);
+        if (cnt > 0) {
+            best_move_r = cands[0].r;
+            best_move_c = cands[0].c;
+            max_depth = (cnt <= 30) ? 3 : 2;
+            minimax(max_depth, -INF, INF, bot);
         }
     }
+
+    if (!valid(best_move_r, best_move_c) || g_game.board[best_move_r][best_move_c] != EMPTY) {
+        if (!random_adjacent(last_r, last_c, &best_move_r, &best_move_c)) {
+            for (int r = 0; r < BOARD_SIZE; r++) {
+                for (int c = 0; c < BOARD_SIZE; c++) {
+                    if (g_game.board[r][c] == EMPTY) { *x = r; *y = c; return; }
+                }
+            }
+        }
+    }
+
+    *x = best_move_r;
+    *y = best_move_c;
 }
