@@ -6,11 +6,6 @@ static const int D4R[4] = {0, 1, 1,  1};
 static const int D4C[4] = {1, 0, 1, -1};
 
 
-static bool is_blocked(int r, int c)
-{
-    return !valid(r, c) || g_game.board[r][c] != EMPTY;
-}
-
 bool check_win(int r, int c)
 {
     win_len = 0;
@@ -39,17 +34,12 @@ bool check_win(int r, int c)
 
         
         if (len >= WIN_LEN) {
-            bool b1 = is_blocked(sr - dr, sc - dc);   
-            bool b2 = is_blocked(er, ec);             
-
-            if (!(block_rule && b1 && b2)) {          
-                win_len = len;
-                for (int k = 0; k < len; k++) {
-                    win_r[k] = sr + k * dr;
-                    win_c[k] = sc + k * dc;
-                }
-                return true;
+            win_len = len;
+            for (int k = 0; k < len; k++) {
+                win_r[k] = sr + k * dr;
+                win_c[k] = sc + k * dc;
             }
+            return true;
         }
     }
     return false;

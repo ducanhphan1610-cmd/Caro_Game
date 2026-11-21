@@ -127,7 +127,7 @@ int main(void) {
     srand((unsigned int)time(NULL));
     InitConsoleUI();
 
-    strcpy(g_game.gamename, "CARO 15x15");
+    strcpy(g_game.gamename, "NHOM 10");
     g_game.settings.SoundEnabled = true;
     g_game.settings.TurnTimeOut = 30;
     g_game.settings.P1_control = KEYSET_WASD;

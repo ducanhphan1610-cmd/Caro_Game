@@ -64,8 +64,8 @@ static void DrawTitle(void) {
         fputs(art[i], stdout);
     }
     SetColor(11);
-    GotoXY(45, 8);
-    printf("%s", g_game.gamename);
+    GotoXY(41, 8);
+    printf("NHOM 10 - DO AN GAME CARO");
     SetColor(7);
 }
 
@@ -138,7 +138,7 @@ static void DrawPanelFrame(void) {
     GotoXY(PANEL_X + 1, TOP + 14); for (int i = 0; i < w - 2; i++) printf("-");
 
     SetColor(14);
-    GotoXY(PANEL_X + 13, TOP + 1); printf("C A R O");
+    GotoXY(PANEL_X + 13, TOP + 1); printf("N H O M 1 0");
     SetColor(7);
 
     GotoXY(PANEL_X + 2, TOP + 15); printf("Phim tat:");

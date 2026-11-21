@@ -9,7 +9,6 @@ extern int  move_count;
 extern int  win_r[BOARD_SIZE];                       
 extern int  win_c[BOARD_SIZE];
 extern int  win_len;                                 
-extern bool block_rule;                              
 
 bool valid(int r, int c);                 
 void board_reset(void);                   

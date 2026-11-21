@@ -7,7 +7,6 @@ int  move_count;
 int  win_r[BOARD_SIZE];
 int  win_c[BOARD_SIZE];
 int  win_len;
-bool block_rule = true;
 
 bool valid(int r, int c)
 {

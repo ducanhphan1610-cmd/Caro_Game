@@ -23,7 +23,7 @@ static inline int to_sign(CellState p) {
 
 static long long consecutive_score(int len, int open_ends, bool is_my_turn) {
     if (len >= WIN_LEN)
-        return (block_rule && open_ends == 0) ? 0 : FIVE_SCORE;
+        return FIVE_SCORE;
     if (open_ends == 0)
         return 0;
     return PATTERN_SCORE[len][open_ends][is_my_turn ? 1 : 0];
